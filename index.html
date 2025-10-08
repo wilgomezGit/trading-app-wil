@@ -1,0 +1,143 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WilTrader Dashboard — Premium</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="assets/logo.png" alt="logo" class="logo"><div class="titles"><h1>WilTrader Dashboard</h1><div class="subtitle">Premium Journal</div></div></div>
+    <div class="controls">
+      <label class="small">Moneda
+        <select id="currencySelect">
+          <option value="USD">USD</option>
+          <option value="COP">COP</option>
+        </select>
+      </label>
+      <div class="small">TRM: <span id="trm">4000</span></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card form-card">
+      <form id="tradeForm">
+        <div class="row">
+          <label>Fecha<input type="date" id="fecha"></label>
+          <label>Hora<input type="time" id="hora"></label>
+          <label>Tipo<select id="tipo"><option>Rompimiento</option><option>Reingreso</option><option>Test</option></select></label>
+          <label>Lado<select id="lado"><option>LARGO</option><option>CORTO</option></select></label>
+        </div>
+        <div class="row">
+          <label>Stop (pts)<input type="number" id="stop" value="6"></label>
+          <label>Target (pts)<input type="number" id="target" value="12"></label>
+          <label>Contratos<input type="number" id="contracts" value="1" min="1"></label>
+        </div>
+        <div class="row">
+          <label style="flex:1">Resultado (pts)<input type="number" id="resultado" placeholder="ej. 6 o -3"></label>
+        </div>
+        <div class="row">
+          <label style="flex:1">Observaciones<input type="text" id="obs" placeholder="Notas..."></label>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" id="saveBtn">Guardar en Firestore</button>
+          <button type="button" class="btn ghost" id="clearBtn">Borrar tabla local</button>
+          <button type="button" class="btn" id="toCharts">📊 Mostrar gráficos</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card metrics">
+      <div class="metric"><div class="label">Total PnL (USD)</div><div id="totalPnl" class="value">$0.00</div></div>
+      <div class="metric"><div class="label">Winrate</div><div id="winrate" class="value">0%</div></div>
+      <div class="metric"><div class="label">Profit Factor</div><div id="pf" class="value">—</div></div>
+      <div class="metric"><div class="label">Trades</div><div id="tradesCount" class="value">0</div></div>
+    </section>
+
+    <section class="card table-card">
+      <h3>Historial</h3>
+      <div class="table-wrap"><table id="tradesTable"><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Lado</th><th>Stop</th><th>TP</th><th>Puntos</th><th>USD</th><th>COP</th><th>Obs</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </main>
+
+  <footer class="footer">WilTrader Dashboard — Premium</footer>
+
+  <script>
+    const firebaseConfig = {"apiKey": "AIzaSyDYGM2kwuG5AhyjzMy_cnH1YEzLbOkBdh4", "authDomain": "wiltraderdashboard.firebaseapp.com", "projectId": "wiltraderdashboard", "storageBucket": "wiltraderdashboard.firebasestorage.app", "messagingSenderId": "665739004897", "appId": "1:665739004897:web:32d97c260294b378f160a0"};
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const VALOR_PUNTO = 50;
+    const TRM = 4000;
+
+    async function loadTrades(){ 
+      const snapshot = await db.collection('trades').orderBy('timestamp').get();
+      const trades = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
+      window._trades = trades;
+      renderTable(trades);
+      renderMetrics(trades);
+    }
+
+    function renderTable(trades){
+      const tbody = document.querySelector('#tradesTable tbody');
+      tbody.innerHTML='';
+      trades.forEach((t,i)=>{
+        const usd = (t.resultado===null?0:t.resultado*VALOR_PUNTO*(t.contracts||1));
+        const cop = Math.round(usd*TRM);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${t.fecha}</td><td>${t.hora}</td><td>${t.tipo}</td><td>${t.lado}</td><td>${t.stop}</td><td>${t.target}</td><td>${t.resultado===null?'':t.resultado}</td><td>$${usd.toFixed(2)}</td><td>$${cop}</td><td>${t.obs||''}</td><td><button data-id="${t.id}" class="del">X</button></td>`;
+        tbody.appendChild(tr);
+      });
+      document.querySelectorAll('.del').forEach(b=>b.onclick=async (e)=>{
+        const id = e.target.dataset.id;
+        if(confirm('Eliminar trade?')){
+          await db.collection('trades').doc(id).delete();
+          loadTrades();
+        }
+      });
+    }
+
+    function renderMetrics(trades){
+      const wins = trades.filter(t=>t.resultado!==null && t.resultado>0).length;
+      const losses = trades.filter(t=>t.resultado!==null && t.resultado<0).length;
+      const be = trades.filter(t=>t.resultado===0).length;
+      const totalUSD = trades.reduce((s,t)=> s + (t.resultado===null?0:t.resultado*VALOR_PUNTO*(t.contracts||1)),0);
+      document.getElementById('totalPnl').textContent = '$' + totalUSD.toFixed(2);
+      document.getElementById('winrate').textContent = (wins+losses+be) ? ((wins/(wins+losses+be))*100).toFixed(1) + '%' : '0%';
+      const grossW = trades.filter(t=>t.resultado>0).reduce((s,t)=>s + t.resultado*VALOR_PUNTO*(t.contracts||1),0);
+      const grossL = Math.abs(trades.filter(t=>t.resultado<0).reduce((s,t)=>s + t.resultado*VALOR_PUNTO*(t.contracts||1),0));
+      document.getElementById('pf').textContent = grossL ? (grossW/grossL).toFixed(2) : '—';
+      document.getElementById('tradesCount').textContent = trades.length;
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', async ()=>{
+      const t = {
+        fecha: document.getElementById('fecha').value || new Date().toISOString().slice(0,10),
+        hora: document.getElementById('hora').value || new Date().toTimeString().slice(0,5),
+        tipo: document.getElementById('tipo').value,
+        lado: document.getElementById('lado').value,
+        stop: Number(document.getElementById('stop').value) || 6,
+        target: Number(document.getElementById('target').value) || 12,
+        resultado: document.getElementById('resultado').value === '' ? null : Number(document.getElementById('resultado').value),
+        contracts: Number(document.getElementById('contracts')?.value || 1),
+        obs: document.getElementById('obs').value || '',
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      await db.collection('trades').add(t);
+      document.getElementById('resultado').value=''; document.getElementById('obs').value='';
+      await loadTrades();
+      alert('Trade guardado en Firestore ✅');
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', ()=>{ if(confirm('Eliminar todo local? (no afecta Firestore)')){ localStorage.removeItem('wil_trades_local'); alert('Local borrado'); } });
+
+    document.getElementById('toCharts').addEventListener('click', ()=>{ window.location.href='charts.html'; });
+
+    loadTrades();
+  </script>
+</body>
+</html>
