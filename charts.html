@@ -50,7 +50,25 @@ async function loadAndRender(){
   const ctxEq = document.getElementById('equityChart').getContext('2d');
   new Chart(ctxEq, { type:'line', data:{ labels, datasets:[{ label:'Equity USD', data: equity, borderColor:'#D4AF37', backgroundColor:'rgba(212,175,55,0.08)', fill:true, tension:0.3 }] }, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#e6e1d6'} }, y:{ ticks:{color:'#e6e1d6'} } } } });
   const ctxPie = document.getElementById('distChart').getContext('2d');
-  new Chart(ctxPie, { type:'doughnut', data:{ labels:['Wins','Losses','BE'], datasets:[{ data: pieData, backgroundColor:['#16a34a','#ef4444','#f59e0b'] }] }, options:{ responsive:true, plugins:{legend:{position:'bottom', labels:{color:'#e6e1d6'}}} } ;
+  new Chart(ctxPie, { 
+    type: 'doughnut', 
+    data: { 
+      labels: ['Wins', 'Losses', 'BE'], 
+      datasets: [{ 
+        data: pieData, 
+        backgroundColor: ['#16a34a', '#ef4444', '#f59e0b'] 
+      }] 
+    }, 
+    options: { 
+      responsive: true, 
+      plugins: { 
+        legend: { 
+          position: 'bottom', 
+          labels: { color: '#e6e1d6' } 
+        } 
+      } 
+    } 
+  }); 
   const ctxBars = document.getElementById('barsChart').getContext('2d');
   new Chart(ctxBars, { type:'bar', data:{ labels, datasets:[{ label:'PnL USD', data: bars, backgroundColor: bars.map(v=> v>=0? '#16a34a':'#ef4444') }] }, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#e6e1d6'} }, y:{ ticks:{color:'#e6e1d6'} } } } });
 }
