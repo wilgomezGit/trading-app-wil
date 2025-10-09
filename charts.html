@@ -70,7 +70,20 @@ async function loadAndRender(){
     } 
   }); 
   const ctxBars = document.getElementById('barsChart').getContext('2d');
-  new Chart(ctxBars, { type:'bar', data:{ labels, datasets:[{ label:'PnL USD', data: bars, backgroundColor: bars.map(v=> v>=0? '#16a34a':'#ef4444') }] }, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#e6e1d6'} }, y:{ ticks:{color:'#e6e1d6'} } } } });
+  new Chart(ctxBars, {
+    type:'bar', data:
+    { labels, datasets:[{ label:'PnL USD', data: bars, backgroundColor: bars.map(v=> v>=0? '#16a34a':'#ef4444') 
+    }] 
+    }, 
+    options:
+        { responsive:true, 
+         plugins:
+             {legend: {
+               display:false}
+             }, 
+         scales:{ 
+           x:{ 
+             ticks:{color:'#e6e1d6'} }, y:{ ticks:{color:'#e6e1d6'} } } } });
 }
 document.getElementById('backBtn').addEventListener('click', ()=> location.href='index.html');
 loadAndRender();
