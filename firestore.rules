@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Trades — fully accessible now (TODO: lock to auth when login is added)
+    match /trades/{tradeId} {
+      allow read, write: if true;
+    }
+    // Instruments — read by all, write by all (lock to admin after auth)
+    match /instruments/{instId} {
+      allow read, write: if true;
+    }
+  }
+}

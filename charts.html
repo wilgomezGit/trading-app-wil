@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Strategy Analyzer — WilTrader</title>
+<meta name="description" content="WilTrader Strategy Analyzer — NinjaTrader style period breakdown, equity curve and performance metrics">
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* ── Analyzer-specific overrides ───────────────────────────────── */
+body { background:#0a0d14; }
+
+/* Toolbar strip */
+.analyzer-toolbar {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:#111520; border-bottom:1px solid rgba(212,175,55,0.12);
+  padding:8px 16px;
+}
+.toolbar-group { display:flex; align-items:center; gap:6px; }
+.toolbar-label { font-size:11px; color:#64748b; font-weight:600; white-space:nowrap; }
+.toolbar-select {
+  background:#1a1f2e; border:1px solid rgba(255,255,255,0.07);
+  color:#e2e8f0; padding:5px 10px; border-radius:6px; font-size:12px;
+  cursor:pointer; outline:none;
+}
+.toolbar-select:focus { border-color:#D4AF37; }
+.toolbar-divider { width:1px; height:22px; background:rgba(255,255,255,0.07); margin:0 4px; }
+.toolbar-btn { background:#1a1f2e; border:1px solid rgba(255,255,255,0.07); color:#94a3b8; padding:5px 12px; border-radius:6px; font-size:12px; cursor:pointer; transition:all 0.15s; }
+.toolbar-btn:hover, .toolbar-btn.active { background:#D4AF37; color:#0a0d14; border-color:#D4AF37; font-weight:700; }
+
+/* Summary metrics bar */
+.summary-bar {
+  display:flex; flex-wrap:wrap; gap:0;
+  background:#0d1117; border-bottom:1px solid rgba(212,175,55,0.12);
+}
+.sum-cell {
+  flex:1; min-width:120px; padding:10px 14px;
+  border-right:1px solid rgba(255,255,255,0.04);
+}
+.sum-cell:last-child { border-right:none; }
+.sum-label { font-size:10px; color:#4b5563; font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
+.sum-value { font-size:14px; font-weight:700; color:#D4AF37; }
+.sum-value.pos { color:#22c55e; }
+.sum-value.neg { color:#ef4444; }
+
+/* Period table */
+.period-section { display:flex; flex-direction:column; height:260px; overflow:hidden; }
+.period-table-wrap { flex:1; overflow:auto; }
+.period-table {
+  width:100%; border-collapse:collapse; font-size:11.5px;
+  min-width:900px;
+}
+.period-table thead tr {
+  position:sticky; top:0; z-index:2;
+  background:#111520;
+}
+.period-table th {
+  padding:7px 10px; text-align:right; font-size:10px; font-weight:600;
+  color:#4b5563; text-transform:uppercase; letter-spacing:.4px;
+  border-bottom:1px solid rgba(212,175,55,0.15); white-space:nowrap;
+  cursor:pointer; user-select:none;
+}
+.period-table th:first-child { text-align:left; padding-left:14px; }
+.period-table th:hover { color:#D4AF37; }
+.period-table td {
+  padding:5px 10px; text-align:right;
+  border-bottom:1px solid rgba(255,255,255,0.03);
+  white-space:nowrap; font-variant-numeric: tabular-nums;
+}
+.period-table td:first-child { text-align:left; padding-left:14px; color:#94a3b8; font-weight:600; }
+.period-table tr:hover td { background:rgba(212,175,55,0.04); }
+.period-table tr.selected td { background:rgba(212,175,55,0.08); }
+.period-table .cell-pos { color:#22c55e; }
+.period-table .cell-neg { color:#ef4444; }
+.period-table .cell-muted { color:#64748b; }
+
+/* Graph section */
+.graph-section { display:flex; flex-direction:column; }
+.graph-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 14px; background:#111520;
+  border-top:1px solid rgba(255,255,255,0.04);
+  border-bottom:1px solid rgba(255,255,255,0.04);
+}
+.graph-header-left { display:flex; align-items:center; gap:8px; }
+.graph-label { font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.5px; }
+.equity-wrap { padding:12px 14px; background:#0a0d14; }
+
+/* Bottom charts grid */
+.mini-charts-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:12px 14px; }
+.mini-chart-card { background:#0f1420; border:1px solid rgba(255,255,255,0.05); border-radius:10px; padding:12px; }
+.mini-title { font-size:10px; font-weight:600; color:#4b5563; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
+
+/* Analyzer insights */
+.insights-strip { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; padding:12px 14px; }
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/instruments.js"></script>
+<script src="js/trades.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/analyzer.js"></script>
+</head>
+<body>
+
+<!-- ── TOPBAR ── -->
+<header class="topbar" style="padding:10px 16px">
+  <div class="brand">
+    <img src="assets/logo.png" class="logo" alt="WilTrader" style="width:38px;height:38px">
+    <div class="titles"><h1 style="font-size:16px">Strategy Analyzer</h1><div class="subtitle">WilTrader Pro</div></div>
+  </div>
+  <div class="topbar-controls">
+    <button class="nav-btn" id="backBtn" style="font-size:12px;padding:6px 12px">⬅ Journal</button>
+  </div>
+</header>
+
+<!-- ── TOOLBAR ── -->
+<div class="analyzer-toolbar">
+  <div class="toolbar-group">
+    <span class="toolbar-label">Display</span>
+    <select class="toolbar-select" id="displayType">
+      <option value="cumPnl">Cumulative Net Profit</option>
+      <option value="netPnl">Net Profit by Period</option>
+      <option value="winRate">Win Rate</option>
+    </select>
+  </div>
+  <div class="toolbar-divider"></div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Period</span>
+    <button class="toolbar-btn active" data-period="daily"   id="btnDaily">Daily</button>
+    <button class="toolbar-btn"        data-period="weekly"  id="btnWeekly">Weekly</button>
+    <button class="toolbar-btn"        data-period="monthly" id="btnMonthly">Monthly</button>
+  </div>
+  <div class="toolbar-divider"></div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Direction</span>
+    <select class="toolbar-select" id="fDirection">
+      <option value="">All</option><option value="Long">Long</option><option value="Short">Short</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">W/L</span>
+    <select class="toolbar-select" id="fWL">
+      <option value="">All</option><option value="win">Winners</option><option value="loss">Losers</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Sesión</span>
+    <select class="toolbar-select" id="fSession">
+      <option value="">All</option>
+      <option value="London">London</option><option value="New York">New York</option>
+      <option value="Asia">Asia</option><option value="Pre-Market">Pre-Market</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Instrumento</span>
+    <select class="toolbar-select" id="fActivo"></select>
+  </div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Emoción</span>
+    <select class="toolbar-select" id="fEmotion">
+      <option value="">All</option>
+      <option value="Tranquilo">Tranquilo</option><option value="Ansiedad">Ansiedad</option>
+      <option value="Miedo">Miedo</option><option value="Euforia">Euforia</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Desde</span><input type="date" id="fFrom" class="toolbar-select" style="width:130px">
+    <span class="toolbar-label">Hasta</span><input type="date" id="fTo"   class="toolbar-select" style="width:130px">
+  </div>
+  <button class="toolbar-btn active" id="btnRun" style="margin-left:auto;padding:5px 18px;background:#D4AF37;color:#0a0d14;font-weight:700">▶ Run</button>
+</div>
+
+<!-- ── SUMMARY BAR ── -->
+<div class="summary-bar" id="summaryBar">
+  <div class="sum-cell"><div class="sum-label">Net Profit</div><div class="sum-value" id="sTotal">$—</div></div>
+  <div class="sum-cell"><div class="sum-label">Gross Profit</div><div class="sum-value pos" id="sGrossW">$—</div></div>
+  <div class="sum-cell"><div class="sum-label">Gross Loss</div><div class="sum-value neg" id="sGrossL">$—</div></div>
+  <div class="sum-cell"><div class="sum-label">Profit Factor</div><div class="sum-value" id="sPF">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Max Drawdown</div><div class="sum-value neg" id="sDD">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Total Trades</div><div class="sum-value" id="sCount">—</div></div>
+  <div class="sum-cell"><div class="sum-label">% Win</div><div class="sum-value" id="sWR">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Avg Win</div><div class="sum-value pos" id="sAvgW">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Avg Loss</div><div class="sum-value neg" id="sAvgL">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Avg R:R</div><div class="sum-value" id="sRR">—</div></div>
+  <div class="sum-cell"><div class="sum-label">Expectancy</div><div class="sum-value" id="sExp">—</div></div>
+</div>
+
+<!-- ── PERIOD TABLE ── -->
+<div class="period-section">
+  <div class="period-table-wrap">
+    <table class="period-table" id="periodTable">
+      <thead><tr>
+        <th>Period</th>
+        <th>#</th>
+        <th>Cum. Net ($)</th>
+        <th>Net Profit ($)</th>
+        <th>Gross Profit</th>
+        <th>Gross Loss</th>
+        <th>% Win</th>
+        <th>Avg. Win</th>
+        <th>Avg. Loss</th>
+        <th>Avg. R:R</th>
+        <th>Lrg. Win</th>
+        <th>Lrg. Loss</th>
+        <th>Wins</th>
+        <th>Losses</th>
+      </tr></thead>
+      <tbody id="periodBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── EQUITY CHART ── -->
+<div class="graph-section">
+  <div class="graph-header">
+    <div class="graph-header-left">
+      <span class="graph-label">Graph</span>
+      <select class="toolbar-select" id="displayType2">
+        <option value="cumPnl">Cumulative Net Profit</option>
+        <option value="netPnl">Net Profit by Period</option>
+        <option value="winRate">Win Rate %</option>
+      </select>
+    </div>
+    <span style="font-size:11px;color:#4b5563" id="equitySubLabel">USD ($)</span>
+  </div>
+  <div class="equity-wrap">
+    <canvas id="equityChart" height="180"></canvas>
+  </div>
+</div>
+
+<!-- ── MINI CHARTS ── -->
+<div class="mini-charts-grid">
+  <div class="mini-chart-card">
+    <div class="mini-title">📊 PnL por Trade</div>
+    <canvas id="barsChart" height="140"></canvas>
+  </div>
+  <div class="mini-chart-card">
+    <div class="mini-title">🥧 Win / Loss / BE</div>
+    <canvas id="donutChart" height="140"></canvas>
+  </div>
+  <div class="mini-chart-card">
+    <div class="mini-title">🕐 Win Rate por Sesión</div>
+    <canvas id="sessionChart" height="140"></canvas>
+  </div>
+</div>
+
+<!-- ── INSIGHTS ── -->
+<div style="padding:0 14px 8px;font-size:11px;font-weight:600;color:#4b5563;text-transform:uppercase;letter-spacing:.5px">🧠 Análisis Automático</div>
+<div class="insights-strip" id="analyzerGrid">
+  <div class="empty-state"><div class="icon">📊</div><p>Cargando...</p></div>
+</div>
+
+<footer class="footer">WilTrader — Strategy Analyzer Pro © 2026</footer>
+
+<script>
+// ================================================================
+// Strategy Analyzer — NinjaTrader Style
+// ================================================================
+
+Chart.defaults.color        = '#4b5563';
+Chart.defaults.borderColor  = 'rgba(255,255,255,0.05)';
+Chart.defaults.font.family  = "'Inter', system-ui, sans-serif";
+Chart.defaults.font.size    = 11;
+
+var _charts  = {};
+var _allTrades = [];
+var _period  = 'daily';
+var _dispType = 'cumPnl';
+
+function destroyChart(k) {
+  if (_charts[k]) { try { _charts[k].destroy(); } catch(e){} _charts[k] = null; }
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+async function init() {
+  UI.setLoading(true);
+  try {
+    await InstrumentsModule.load();
+    InstrumentsModule.populateSelect(document.getElementById('fActivo'), true);
+    bindEvents();
+    await runAnalysis();
+  } catch(e) { UI.toast('Error al cargar: ' + e.message, 'error'); }
+  UI.setLoading(false);
+}
+
+// ── Events ───────────────────────────────────────────────────────
+function bindEvents() {
+  document.getElementById('backBtn').onclick = function() { window.location.href = 'index.html'; };
+  document.getElementById('btnRun').onclick = runAnalysis;
+
+  // Period buttons
+  ['btnDaily','btnWeekly','btnMonthly'].forEach(function(id) {
+    document.getElementById(id).onclick = function() {
+      _period = this.dataset.period;
+      document.querySelectorAll('[data-period]').forEach(function(b){ b.classList.remove('active'); });
+      this.classList.add('active');
+      renderPeriodTable(_allTrades);
+      renderEquityChart(_allTrades);
+    };
+  });
+
+  // Display type
+  ['displayType','displayType2'].forEach(function(id) {
+    document.getElementById(id).onchange = function() {
+      _dispType = this.value;
+      document.getElementById('displayType').value = _dispType;
+      document.getElementById('displayType2').value = _dispType;
+      renderEquityChart(_allTrades);
+    };
+  });
+}
+
+// ── Build Filters ────────────────────────────────────────────────
+function getFilters() {
+  var f = {};
+  var v;
+  v = document.getElementById('fActivo').value;    if (v) f.activo    = v;
+  v = document.getElementById('fDirection').value; if (v) f.direction = v;
+  v = document.getElementById('fSession').value;   if (v) f.session   = v;
+  v = document.getElementById('fEmotion').value;   if (v) f.emotion   = v;
+  v = document.getElementById('fFrom').value;      if (v) f.dateFrom  = v;
+  v = document.getElementById('fTo').value;        if (v) f.dateTo    = v;
+  return f;
+}
+
+// ── Run ──────────────────────────────────────────────────────────
+async function runAnalysis() {
+  UI.setLoading(true);
+  var filters = getFilters();
+  var trades  = await TradesModule.load(filters);
+
+  // W/L extra filter
+  var wl = document.getElementById('fWL').value;
+  if (wl === 'win')  trades = trades.filter(function(t){ return t.resultado > 0; });
+  if (wl === 'loss') trades = trades.filter(function(t){ return t.resultado < 0; });
+
+  _allTrades = trades;
+  renderSummaryBar(trades);
+  renderPeriodTable(trades);
+  renderEquityChart(trades);
+  renderBars(trades);
+  renderDonut(trades);
+  renderSessionChart(trades);
+  renderAnalyzer(trades);
+  UI.setLoading(false);
+}
+
+// ── Summary Bar ──────────────────────────────────────────────────
+function renderSummaryBar(trades) {
+  var m    = StatsModule.computeMetrics(trades);
+  var valid = trades.filter(function(t){ return t.resultado !== null && t.resultado !== undefined; });
+  var wins  = valid.filter(function(t){ return t.resultado > 0; });
+  var losses = valid.filter(function(t){ return t.resultado < 0; });
+  var grossW = wins.reduce(function(s,t){ return s + (t.usdValue || t.resultado * InstrumentsModule.getPointValue(t.activo) * (t.contracts||1)); }, 0);
+  var grossL = Math.abs(losses.reduce(function(s,t){ return s + (t.usdValue || t.resultado * InstrumentsModule.getPointValue(t.activo) * (t.contracts||1)); }, 0));
+  var avgW = wins.length ? (grossW / wins.length) : 0;
+  var avgL = losses.length ? (grossL / losses.length) : 0;
+
+  function sv(id, txt, cls) {
+    var el = document.getElementById(id);
+    el.textContent = txt;
+    if (cls) el.className = 'sum-value ' + cls;
+  }
+  var pnlClass = m.totalPnl > 0 ? 'pos' : m.totalPnl < 0 ? 'neg' : '';
+  sv('sTotal',  UI.formatUSD(m.totalPnl), pnlClass);
+  sv('sGrossW', UI.formatUSD(grossW), 'pos');
+  sv('sGrossL', '-'+UI.formatUSD(grossL), 'neg');
+  sv('sPF',     m.profitFactor || '—');
+  sv('sDD',     m.maxDrawdown + '%', 'neg');
+  sv('sCount',  m.count);
+  sv('sWR',     m.winRate + '%');
+  sv('sAvgW',   wins.length ? UI.formatUSD(avgW) : '—', 'pos');
+  sv('sAvgL',   losses.length ? '-'+UI.formatUSD(avgL) : '—', 'neg');
+  sv('sRR',     m.avgRR ? '1:'+m.avgRR : '—');
+  var ex = parseFloat(m.expectancy);
+  sv('sExp', UI.formatUSD(ex), ex > 0 ? 'pos' : ex < 0 ? 'neg' : '');
+}
+
+// ── Period Table ─────────────────────────────────────────────────
+function renderPeriodTable(trades) {
+  var rows = StatsModule.groupByPeriod(trades, _period);
+  var tbody = document.getElementById('periodBody');
+  tbody.innerHTML = '';
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#4b5563;padding:20px">Sin datos para el período seleccionado</td></tr>';
+    return;
+  }
+
+  function fmt(n, prefix) {
+    if (n === null || n === undefined) return '—';
+    prefix = prefix || '';
+    var abs = Math.abs(n);
+    var s = prefix + '$' + parseFloat(abs).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    return n < 0 ? '-' + s : s;
+  }
+  function cls(n) { return n > 0 ? 'cell-pos' : n < 0 ? 'cell-neg' : ''; }
+
+  rows.forEach(function(r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + r.period + '</td>' +
+      '<td class="cell-muted">' + r.count + '</td>' +
+      '<td class="' + cls(r.cumPnl) + '">' + fmt(r.cumPnl) + '</td>' +
+      '<td class="' + cls(r.netPnl) + '">' + fmt(r.netPnl) + '</td>' +
+      '<td class="cell-pos">' + fmt(r.grossW) + '</td>' +
+      '<td class="cell-neg">-' + fmt(r.grossL) + '</td>' +
+      '<td class="' + (parseFloat(r.winRate) >= 50 ? 'cell-pos' : 'cell-neg') + '">' + r.winRate + '%</td>' +
+      '<td class="cell-pos">' + (r.avgW ? '$'+parseFloat(r.avgW).toFixed(2) : '—') + '</td>' +
+      '<td class="cell-neg">' + (r.avgL ? '-$'+parseFloat(r.avgL).toFixed(2) : '—') + '</td>' +
+      '<td>' + (r.avgRR ? '1:'+r.avgRR : '—') + '</td>' +
+      '<td class="cell-pos">' + fmt(r.lrgW) + '</td>' +
+      '<td class="cell-neg">' + fmt(r.lrgL) + '</td>' +
+      '<td class="cell-pos">' + r.wins + '</td>' +
+      '<td class="cell-neg">' + r.losses + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Equity Chart (main, large, NinjaTrader style) ────────────────
+function renderEquityChart(trades) {
+  destroyChart('equity');
+  var valid = trades.filter(function(t){ return t.resultado !== null && t.resultado !== undefined; });
+  var rows  = StatsModule.groupByPeriod(valid, _period);
+  if (!rows.length) return;
+
+  var labels, data;
+  if (_dispType === 'cumPnl') {
+    labels = rows.map(function(r){ return r.period; });
+    data   = rows.map(function(r){ return parseFloat(r.cumPnl.toFixed(2)); });
+  } else if (_dispType === 'netPnl') {
+    labels = rows.map(function(r){ return r.period; });
+    data   = rows.map(function(r){ return parseFloat(r.netPnl.toFixed(2)); });
+  } else {
+    labels = rows.map(function(r){ return r.period; });
+    data   = rows.map(function(r){ return parseFloat(r.winRate); });
+  }
+
+  document.getElementById('equitySubLabel').textContent = _dispType === 'winRate' ? 'Win Rate (%)' : 'USD ($)';
+
+  var ctx  = document.getElementById('equityChart').getContext('2d');
+  var grad = ctx.createLinearGradient(0, 0, 0, 200);
+  grad.addColorStop(0, 'rgba(34,197,94,0.35)');
+  grad.addColorStop(0.6, 'rgba(34,197,94,0.08)');
+  grad.addColorStop(1,   'rgba(34,197,94,0.01)');
+
+  _charts.equity = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: document.getElementById('displayType').selectedOptions[0].text,
+        data:  data,
+        borderColor: '#22c55e',
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.25,
+        pointRadius: data.length > 60 ? 0 : 3,
+        pointBackgroundColor: '#22c55e',
+        pointHoverRadius: 5,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          backgroundColor:'rgba(10,13,22,0.95)',
+          borderColor:'rgba(212,175,55,0.3)',
+          borderWidth:1,
+          titleColor:'#D4AF37',
+          bodyColor:'#e2e8f0',
+          callbacks: {
+            label: function(ctx) {
+              var v = ctx.parsed.y;
+              return '  ' + (_dispType==='winRate' ? v.toFixed(1)+'%' : UI.formatUSD(v));
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color:'#374151', maxTicksLimit:10, maxRotation:0 },
+          grid:  { color:'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          ticks: {
+            color:'#374151',
+            callback: function(v) { return _dispType==='winRate' ? v+'%' : '$'+v.toLocaleString(); }
+          },
+          grid: { color:'rgba(255,255,255,0.04)' }
+        }
+      }
+    }
+  });
+}
+
+// ── Mini Charts ──────────────────────────────────────────────────
+function renderBars(trades) {
+  destroyChart('bars');
+  var valid = trades.filter(function(t){ return t.resultado !== null && t.resultado !== undefined; });
+  if (!valid.length) return;
+  var labels = valid.map(function(t,i){ return t.fecha || ('T'+(i+1)); });
+  var vals   = valid.map(function(t){ return t.usdValue !== undefined && t.usdValue !== null ? t.usdValue : t.resultado * InstrumentsModule.getPointValue(t.activo) * (t.contracts||1); });
+  var colors = vals.map(function(v){ return v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)'; });
+  _charts.bars = new Chart(document.getElementById('barsChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels:labels, datasets:[{ label:'PnL USD', data:vals, backgroundColor:colors, borderRadius:3 }] },
+    options:{ responsive:true, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{display:false}, grid:{display:false}}, y:{ticks:{color:'#374151'}, grid:{color:'rgba(255,255,255,0.04)'}} } }
+  });
+}
+
+function renderDonut(trades) {
+  destroyChart('donut');
+  var valid  = trades.filter(function(t){ return t.resultado !== null && t.resultado !== undefined; });
+  var wins   = valid.filter(function(t){ return t.resultado > 0; }).length;
+  var losses = valid.filter(function(t){ return t.resultado < 0; }).length;
+  var be     = valid.filter(function(t){ return t.resultado === 0; }).length;
+  _charts.donut = new Chart(document.getElementById('donutChart').getContext('2d'), {
+    type:'doughnut',
+    data:{ labels:['Wins','Losses','BE'], datasets:[{ data:[wins,losses,be], backgroundColor:['#22c55e','#ef4444','#f59e0b'], borderWidth:0 }] },
+    options:{ responsive:true, cutout:'65%', plugins:{ legend:{ position:'bottom', labels:{ color:'#4b5563', padding:8, boxWidth:10, font:{size:10} } }, tooltip:{ callbacks:{ label:function(ctx){ var total=wins+losses+be; return ' '+ctx.label+': '+ctx.parsed+' ('+(total?(ctx.parsed/total*100).toFixed(0):0)+'%)'; }}} } }
+  });
+}
+
+function renderSessionChart(trades) {
+  destroyChart('session');
+  var valid = trades.filter(function(t){ return t.resultado !== null && t.resultado !== undefined; });
+  var rows  = StatsModule.winRateByKey(valid, 'session').filter(function(r){ return r.count >= 1; });
+  if (!rows.length) return;
+  var vals   = rows.map(function(r){ return parseFloat(r.winRate); });
+  var colors = vals.map(function(v){ return v >= 50 ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)'; });
+  _charts.session = new Chart(document.getElementById('sessionChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels:rows.map(function(r){ return r.label; }), datasets:[{ label:'Win Rate %', data:vals, backgroundColor:colors, borderRadius:4 }] },
+    options:{ indexAxis:'y', responsive:true, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:function(ctx){ return ' '+ctx.parsed.x.toFixed(1)+'%'; }}} }, scales:{ x:{ max:100, ticks:{ color:'#374151', callback:function(v){ return v+'%'; } }, grid:{color:'rgba(255,255,255,0.04)'} }, y:{ ticks:{color:'#4b5563'}, grid:{display:false} } } }
+  });
+}
+
+// ── Analyzer ─────────────────────────────────────────────────────
+function renderAnalyzer(trades) {
+  var grid     = document.getElementById('analyzerGrid');
+  var insights = AnalyzerModule.analyze(trades);
+  grid.innerHTML = insights.map(function(ins) {
+    return '<div class="insight-card ' + ins.type + '" style="background:rgba(255,255,255,0.025);border-radius:10px;padding:12px;display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(255,255,255,0.06)">' +
+      '<div style="font-size:18px;flex-shrink:0">' + ins.icon + '</div>' +
+      '<div style="font-size:12px;line-height:1.6;color:#6b7280">' + ins.text + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+init();
+</script>
+</body>
+</html>
