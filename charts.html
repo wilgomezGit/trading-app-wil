@@ -96,8 +96,10 @@ body { background:#0a0d14; }
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="js/firebase.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/instruments.js"></script>
 <script src="js/trades.js"></script>
@@ -105,6 +107,13 @@ body { background:#0a0d14; }
 <script src="js/analyzer.js"></script>
 </head>
 <body>
+<!-- ── Auth loading overlay ── -->
+<div id="authLoading" style="position:fixed;inset:0;background:#0a0d14;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <img src="assets/logo.png" style="width:72px;border-radius:14px;box-shadow:0 0 0 2px rgba(212,175,55,0.3)">
+  <div style="width:36px;height:36px;border-radius:50%;border:3px solid rgba(212,175,55,0.15);border-top-color:#D4AF37;animation:spin 0.8s linear infinite"></div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</div>
+<div id="appRoot" style="display:none">
 
 <!-- ── TOPBAR ── -->
 <header class="topbar" style="padding:10px 16px">
@@ -113,7 +122,9 @@ body { background:#0a0d14; }
     <div class="titles"><h1 style="font-size:16px">Strategy Analyzer</h1><div class="subtitle">WilTrader Pro</div></div>
   </div>
   <div class="topbar-controls">
+    <span id="userEmail" style="font-size:11px;color:#4b5563;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     <button class="nav-btn" id="backBtn" style="font-size:12px;padding:6px 12px">⬅ Journal</button>
+    <button class="nav-btn" id="logoutBtn" style="font-size:12px;padding:6px 12px;border-color:rgba(239,68,68,0.3);color:#ef4444">⎋ Salir</button>
   </div>
 </header>
 
@@ -290,6 +301,7 @@ async function init() {
 // ── Events ───────────────────────────────────────────────────────
 function bindEvents() {
   document.getElementById('backBtn').onclick = function() { window.location.href = 'index.html'; };
+  document.getElementById('logoutBtn').onclick = function() { wilLogout(); };
   document.getElementById('btnRun').onclick = runAnalysis;
 
   // Period buttons
@@ -555,7 +567,11 @@ function renderAnalyzer(trades) {
   }).join('');
 }
 
-init();
+requireAuth(function(user) {
+  document.getElementById('userEmail').textContent = user.email;
+  init();
+});
 </script>
+</div><!-- /appRoot -->
 </body>
 </html>

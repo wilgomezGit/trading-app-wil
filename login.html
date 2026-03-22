@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WilTrader — Iniciar Sesión</title>
+<meta name="description" content="WilTrader — Acceso privado al Trading Journal Pro">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="js/firebase.js"></script>
+<style>
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --gold:  #D4AF37;
+  --gold-l:#F0C040;
+  --gold-d:#9a7215;
+  --win:   #22c55e;
+  --loss:  #ef4444;
+  --bg:    #060810;
+  --text:  #f1f5f9;
+  --muted: #64748b;
+}
+html,body { height:100%; }
+body {
+  font-family:'Inter',system-ui,sans-serif;
+  background: var(--bg);
+  display:flex; align-items:center; justify-content:center;
+  min-height:100vh; overflow:hidden;
+  color: var(--text);
+}
+
+/* ── Animated candlestick background ─────────────────────────── */
+.bg-canvas {
+  position:fixed; inset:0; z-index:0; overflow:hidden;
+  background: radial-gradient(ellipse at 50% 40%, rgba(212,175,55,0.07) 0%, transparent 65%),
+              radial-gradient(ellipse at 20% 80%, rgba(34,197,94,0.04)  0%, transparent 50%),
+              linear-gradient(180deg, #060810 0%, #08111e 100%);
+}
+.candle {
+  position:absolute; bottom:-80px;
+  display:flex; flex-direction:column; align-items:center;
+  animation: floatUp linear infinite;
+  opacity:0;
+}
+.candle-wick  { width:2px; background:rgba(212,175,55,0.25); }
+.candle-body  { width:12px; border-radius:1px; }
+.candle-body.bull { background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); }
+.candle-body.bear { background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); }
+@keyframes floatUp {
+  0%   { transform:translateY(0) rotate(0deg); opacity:0; }
+  10%  { opacity:1; }
+  90%  { opacity:0.4; }
+  100% { transform:translateY(-110vh) rotate(5deg); opacity:0; }
+}
+
+/* ── Login card ───────────────────────────────────────────────── */
+.login-wrap {
+  position: relative; z-index:10;
+  width:100%; max-width:420px; padding:20px;
+}
+.login-card {
+  background: rgba(14,18,32,0.85);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(212,175,55,0.2);
+  border-radius: 20px;
+  padding: 40px 36px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,175,55,0.06) inset;
+  animation: cardIn 0.5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes cardIn {
+  from { opacity:0; transform:translateY(30px) scale(0.96); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* Logo */
+.login-logo-wrap { display:flex; justify-content:center; margin-bottom:24px; }
+.login-logo {
+  width:88px; height:88px; border-radius:16px; object-fit:cover;
+  box-shadow: 0 0 0 2px rgba(212,175,55,0.3), 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* Titles */
+.login-title { text-align:center; margin-bottom:6px; }
+.login-title h1 { font-size:24px; font-weight:800; color:var(--gold); letter-spacing:.5px; }
+.login-subtitle { text-align:center; font-size:12px; color:var(--muted); font-weight:500; letter-spacing:1px; text-transform:uppercase; margin-bottom:32px; }
+
+/* Divider */
+.login-divider { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+.login-divider span { flex:1; height:1px; background:rgba(255,255,255,0.06); }
+.login-divider-text { font-size:11px; color:var(--muted); font-weight:500; }
+
+/* Inputs */
+.field { margin-bottom:16px; }
+.field label { display:block; font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+.field-wrap { position:relative; }
+.field-wrap input {
+  width:100%; background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px; color:var(--text); padding:12px 14px;
+  font-size:14px; font-family:inherit; outline:none;
+  transition:border-color 0.2s, box-shadow 0.2s;
+}
+.field-wrap input:focus {
+  border-color: rgba(212,175,55,0.5);
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.12);
+}
+.field-wrap input::placeholder { color:rgba(100,116,139,0.7); }
+.pw-toggle {
+  position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; padding:2px;
+}
+.pw-toggle:hover { color:var(--gold); }
+
+/* Error */
+.login-error {
+  display:none;
+  background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3);
+  border-radius:8px; padding:10px 14px; margin-bottom:16px;
+  font-size:13px; color:#fca5a5;
+}
+
+/* Submit button */
+.login-btn {
+  width:100%; padding:14px;
+  background:linear-gradient(135deg, var(--gold-l), var(--gold-d));
+  border:none; border-radius:10px; color:#080b12;
+  font-size:15px; font-weight:800; cursor:pointer; letter-spacing:.5px;
+  transition:all 0.2s; margin-top:8px;
+  box-shadow: 0 6px 24px rgba(212,175,55,0.3);
+}
+.login-btn:hover { transform:translateY(-2px); box-shadow:0 10px 32px rgba(212,175,55,0.4); }
+.login-btn:active { transform:translateY(0); }
+.login-btn:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.login-btn .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(0,0,0,0.2); border-top-color:#000; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Footer note */
+.login-note { text-align:center; font-size:11px; color:rgba(100,116,139,0.5); margin-top:20px; }
+
+/* Status bar */
+.login-status {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  font-size:11px; color:var(--muted); margin-bottom:20px;
+}
+.status-dot { width:7px; height:7px; border-radius:50%; background:var(--win); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+</style>
+</head>
+<body>
+
+<!-- ── Animated candlestick background ── -->
+<div class="bg-canvas" id="bgCanvas"></div>
+
+<!-- ── Login card ── -->
+<div class="login-wrap">
+  <div class="login-card">
+
+    <div class="login-logo-wrap">
+      <img src="assets/logo.png" class="login-logo" alt="WilTrader">
+    </div>
+    <div class="login-title"><h1>WilTrader</h1></div>
+    <div class="login-subtitle">Trading Journal Pro — Acceso Privado</div>
+
+    <div class="login-status">
+      <div class="status-dot"></div>
+      <span>Conectado a Firebase</span>
+    </div>
+
+    <div class="login-error" id="loginError"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <div class="field-wrap">
+          <input type="email" id="loginEmail" placeholder="tu@email.com" autocomplete="email" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <div class="field-wrap">
+          <input type="password" id="loginPwd" placeholder="••••••••" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" id="pwToggle" title="Mostrar contraseña">👁</button>
+        </div>
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">Iniciar Sesión</button>
+    </form>
+
+    <div class="login-note">🔒 Acceso privado — WilTrader © 2026</div>
+  </div>
+</div>
+
+<script>
+// ── Animated background candles ─────────────────────────────────
+(function() {
+  var container = document.getElementById('bgCanvas');
+  var count = 22;
+  for (var i = 0; i < count; i++) {
+    var c = document.createElement('div');
+    c.className = 'candle';
+    var isBull = Math.random() > 0.45;
+    var bodyH  = 18 + Math.random() * 32;
+    var wickT  = 8  + Math.random() * 18;
+    var wickB  = 8  + Math.random() * 18;
+    var dur    = 12 + Math.random() * 18;
+    var delay  = -(Math.random() * dur);
+    var left   = (Math.random() * 95) + '%';
+    c.innerHTML =
+      '<div class="candle-wick" style="height:' + wickT + 'px"></div>' +
+      '<div class="candle-body ' + (isBull ? 'bull' : 'bear') + '" style="height:' + bodyH + 'px"></div>' +
+      '<div class="candle-wick" style="height:' + wickB + 'px"></div>';
+    c.style.cssText += 'left:' + left + ';' +
+      'animation-duration:' + dur + 's;' +
+      'animation-delay:' + delay + 's;';
+    container.appendChild(c);
+  }
+})();
+
+// ── Password toggle ─────────────────────────────────────────────
+document.getElementById('pwToggle').onclick = function() {
+  var inp = document.getElementById('loginPwd');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  this.textContent = inp.type === 'password' ? '👁' : '🙈';
+};
+
+// ── If already logged in, go to app ────────────────────────────
+firebase.auth().onAuthStateChanged(function(user) {
+  if (user) window.location.href = 'index.html';
+});
+
+// ── Login form ──────────────────────────────────────────────────
+document.getElementById('loginForm').onsubmit = async function(e) {
+  e.preventDefault();
+  var email  = document.getElementById('loginEmail').value.trim();
+  var pwd    = document.getElementById('loginPwd').value;
+  var errEl  = document.getElementById('loginError');
+  var btn    = document.getElementById('loginBtn');
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    await firebase.auth().signInWithEmailAndPassword(email, pwd);
+    window.location.href = 'index.html';
+  } catch(err) {
+    var msgs = {
+      'auth/user-not-found':    'No existe una cuenta con ese email.',
+      'auth/wrong-password':    'Contraseña incorrecta. Inténtalo de nuevo.',
+      'auth/invalid-email':     'El email ingresado no es válido.',
+      'auth/too-many-requests': 'Demasiados intentos fallidos. Espera un momento.',
+      'auth/invalid-credential':'Credenciales incorrectas. Verifica email y contraseña.',
+      'auth/network-request-failed': 'Error de red. Verifica tu conexión.'
+    };
+    errEl.textContent = msgs[err.code] || ('Error: ' + err.message);
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = 'Iniciar Sesión';
+  }
+};
+</script>
+</body>
+</html>
